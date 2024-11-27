@@ -73,11 +73,47 @@ async function openBrowser(targetURL) {
     console.log(chalk.yellow('Found CloudFlare challenge'));
     try {
       await sleep(20);
-      const captchaContainer = await page.$(".spacer > div:first-child");
-      await captchaContainer.click({
-        offset: {
-          x: 20,
-          y: 20
+      return new Promise(async (resolve) => {
+        const waitInterval = setTimeout(() => { clearInterval(waitInterval); resolve(false); }, 5000);
+        try {
+          const elements = await page.$$('[name="cf-turnstile-response"]');
+          if (elements.length === 0) {
+            const coordinates = await page.evaluate(() => {
+              const coords = [];
+              const checkDivs = () => {
+                document.querySelectorAll('div').forEach(item => {
+                  try {
+                    const rect = item.getBoundingClientRect();
+                    const style = window.getComputedStyle(item);
+                    if (style.margin === "0px" && style.padding === "0px" && rect.width > 290 && rect.width <= 310 && !item.querySelector('*')) {
+                      coords.push({ x: rect.x, y: rect.y, w: rect.width, h: rect.height });
+                    }
+                  } catch (err) { }
+                });
+              };
+              checkDivs();
+              if (coords.length === 0) checkDivs();
+              return coords;
+            });
+
+            for (const { x, y, h } of coordinates) {
+              try { await page.mouse.click(x + 30, y + h / 2); } catch (err) { }
+            }
+            return resolve(true);
+          }
+
+          for (const element of elements) {
+            try {
+              const parent = await element.evaluateHandle(el => el.parentElement);
+              const box = await parent.boundingBox();
+              await page.mouse.click(box.x + 30, box.y + box.height / 2);
+            } catch (err) { }
+          }
+          clearInterval(waitInterval);
+          resolve(true);
+        } catch (err) {
+          clearInterval(waitInterval);
+          resolve(false);
         }
       });
     } finally {
